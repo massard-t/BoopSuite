@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import time
 
@@ -8,8 +8,9 @@ import pyric.lib.libnl as nl
 
 import argparse
 
-from os import system
-from sys import exit, exc_info
+from os import system, path, getuid, uname
+from sys import exit, stdout, exc_info
+
 
 class c:
     HEADER    = "\033[95m"
@@ -22,12 +23,17 @@ class c:
     BOLD      = "\033[1m"
     UNDERLINE = "\033[4m"
 
+
 class Configuration:
     def __init__(self):
+        self.check_root()
+        self.check_op()
+
         parser = argparse.ArgumentParser()
 
         parser.add_argument(
             "-i",
+            "--interface",
             action="store",
             dest="interface",
             help="select an interface",
@@ -35,6 +41,7 @@ class Configuration:
 
         parser.add_argument(
             "-n",
+            "--name",
             action="store",
             default=None,
             dest="name",
@@ -42,6 +49,7 @@ class Configuration:
 
         parser.add_argument(
             "-c",
+            "--channel",
             action="store",
             default=None,
             dest="channel",
@@ -49,6 +57,7 @@ class Configuration:
 
         parser.add_argument(
             "-k",
+            "--kill",
             action="store_true",
             dest="kill",
             default=False,
@@ -65,9 +74,28 @@ class Configuration:
 
         return
 
+    def check_root(self):
+        if getuid() != 0:
+            print(c.FAIL+" [-] User is not Root.")
+            exit()
+        return
+
+    def check_op(self):
+        if uname()[0].startswith("Linux") and not "Darwin" not in uname()[0]:
+            print(c.FAIL+" [-] Wrong OS.")
+            exit()
+        return
+
     def parse_interface(self, interface):
         if interface in pyw.interfaces():
             print(c.OKGREEN+" [+] "+c.WHITE+"Valid Card Selected.")
+
+            info = pyw.ifinfo(pyw.getcard(interface))
+
+            print("   '->  Driver: "+info["driver"])
+            print("   '->  Hardware Address: "+info["hwaddr"])
+            print("   '->  manufacturer: "+info["manufacturer"])
+
             if pyw.modeget(pyw.getcard(interface)) == "monitor":
                 self.monitor = True
             else:
@@ -136,7 +164,7 @@ class Configuration:
         else:
             print(c.FAIL+" [-] "+c.WHITE+" Channel is invalid in either frequency")
             exit(0)
-
+        return
 
     def kill_interfering_tasks():
         commandlist = [
@@ -164,45 +192,40 @@ class Configuration:
 
     def turn_monitor_on(self):
         self.card = pyw.getcard(self.interface)
-        try:
-            if self.name:
-                self.newcard = pyw.devset(self.card, self.name)
-                pyw.modeset(self.newcard, "monitor")
-                pyw.up(self.newcard)
-            else:
-                self.newcard = pyw.devset(self.card, self.card.dev+"mon")
-                pyw.modeset(self.newcard, "monitor")
-                pyw.up(self.newcard)
+        if self.name:
+            self.newcard = pyw.devset(self.card, self.name)
+            pyw.modeset(self.newcard, "monitor")
+            pyw.up(self.newcard)
+        else:
+            self.newcard = pyw.devset(self.card, self.card.dev+"mon")
+            pyw.modeset(self.newcard, "monitor")
+            pyw.up(self.newcard)
 
-            print(c.OKGREEN+" [+] "+c.WHITE+"New Card Name: "+c.HEADER+self.newcard.dev)
+        print(c.OKGREEN+" [+] "+c.WHITE+"New Card Name: "+c.HEADER+self.newcard.dev)
 
-            if self.channel != None:
-                self.set_channel()
-        except:
-            print(c.FAIL+" [-] "+c.WHITE+" Error: "+str(exc_info()))
+        if self.channel != None:
+            self.set_channel()
+
         return
 
     def turn_monitor_off(self):
         self.card = pyw.getcard(self.interface)
-        try:
-            if self.name:
-                self.newcard = pyw.devset(self.card, self.name)
-                pyw.modeset(self.newcard, "managed")
-                pyw.up(self.newcard)
+        if self.name:
+            self.newcard = pyw.devset(self.card, self.name)
+            pyw.modeset(self.newcard, "managed")
+            pyw.up(self.newcard)
+        else:
+            if len(self.card.dev) < 4:
+                self.newcard = pyw.devset(self.card, "boopmon")
             else:
-                if len(self.card.dev) < 4:
-                    self.newcard = pyw.devset(self.card, "boopmon")
-                else:
-                    self.newcard = pyw.devset(self.card, self.card.dev[:-3])
-                pyw.modeset(self.newcard, "managed")
-                pyw.up(self.newcard)
+                self.newcard = pyw.devset(self.card, self.card.dev[:-3])
+            pyw.modeset(self.newcard, "managed")
+            pyw.up(self.newcard)
 
-            print(c.OKGREEN+" [+] "+c.WHITE+"New Card Name: "+c.HEADER+self.newcard.dev)
+        print(c.OKGREEN+" [+] "+c.WHITE+"New Card Name: "+c.HEADER+self.newcard.dev)
 
-            if self.channel != None:
-                self.set_channel()
-        except:
-            print(c.FAIL+" [-] "+c.WHITE+" Error: "+str(exc_info()))
+        if self.channel != None:
+            self.set_channel()
         return
 
     def set_channel(self):
@@ -247,32 +270,41 @@ class Configuration:
             }
 
         channel = __FREQS__[int(self.channel)]
-        system("sudo iwconfig "+self.interface+" freq "+channel+"G")
+        system("sudo iwconfig "+str(self.newcard.dev)+" freq "+channel+"G")
         print(c.OKGREEN+" [+] "+c.WHITE+"Card Set to Channel: "+c.HEADER+str(self.channel))
         return
 
+
 def display_art():
     print(c.OKBLUE+"""
-    ____                   _____       _ ________
-   / __ )____  ____  ____ / ___/____  (_) __/ __/
-  / __  / __ \/ __ \/ __ \\\__ \/ __ \/ / /_/ /_
- / /_/ / /_/ / /_/ / /_/ /__/ / / / / / __/ __/
-/_____/\____/\____/ .___/____/_/ /_/_/_/ /_/
-                 /_/
+ /$$$$$$$
+| $$__  $$
+| $$  \ $$  /$$$$$$   /$$$$$$   /$$$$$$
+| $$$$$$$  /$$__  $$ /$$__  $$ /$$__  $$
+| $$__  $$| $$  \ $$| $$  \ $$| $$  \ $$
+| $$  \ $$| $$  | $$| $$  | $$| $$  | $$
+| $$$$$$$/|  $$$$$$/|  $$$$$$/| $$$$$$$/
+|_______/  \______/  \______/ | $$____/
+                              | $$
+                              | $$
+                              |__/
     """)
-    print(c.HEADER+"     Codename: Horned Viper\r\n"+c.BOLD)
+    print(c.HEADER+"     Codename: Inland Taipan\r\n"+c.BOLD)
     return
 
+
 def main():
+    stdout.write("\x1b[8;{rows};{cols}t".format(rows=35, cols=75))
     start = time.time()
     display_art()
     try:
         configuration = Configuration()
     except Exception,e:
-        print("Please Email: jacobsin1996@gmail.com ")
-        print("Your Error is: "+str(e))
+        print(" [-]An error occured: "+str(e))
 
     print(c.OKBLUE+" [+] "+c.WHITE+"Time: "+c.OKGREEN+str(round(time.time() - start, 5)))
     return (0)
 
-main()
+
+if __name__ == "__main__":
+    main()

@@ -1,8 +1,9 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-__year__    = [2016, 2017]
-__status__  = "Testing"
-__contact__ = "jacobsin1996@gmail.com"
+__year__    = [2016, 2017];
+__status__  = "Stable";
+__contact__ = "jacobsin1996@gmail.com";
 
 # Imports
 import argparse
@@ -11,681 +12,586 @@ import signal
 
 import pyric.pyw as pyw
 
-logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR);
 
-from getpass import getuser
 from netaddr import *
 from os import system, path, getuid, uname
 from random import choice
+from scapy.contrib.wpa_eapol import WPA_key
 from scapy.all import *
-from sys import exit, stdout
-from tabulate import tabulate
+from sys import exit, stdout, stderr, setcheckinterval
 from threading import Thread
 from time import sleep, time
 
-conf.verb = 0
+conf.verb = 0;
+setcheckinterval = 1000;
 
-# GLOBALS
-Global_Access_Points = {} # MAC, AP OBJECT
-Global_Clients = {} # MAC, CLIENT OBJECT
+class c:
+    H  = "\033[95m"; # Magenta
+    B  = "\033[94m"; # Blue
+    W  = "\033[93m"; # Yellow
+    G  = "\033[92m"; # Green
+    F  = "\033[91m"; # Red
+    E  = "\033[0m";  # Clear
+    Bo = "\033[1m";  # Bold
 
-Global_Mac_Filter_Channel = ""
-
-Global_Hidden_SSIDs = []
-Global_Ignore_Broadcast = ["ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00"]
-Global_Ignore_Multicast = ["01:00:", "01:80:c2", "33:33"]
-
-Global_Print_Flag = True
-Global_Channel_Hopper_Flag = True
-
-Global_Handshakes = {} # "NETWORKS", "EAPOLS"
-Global_Mac_Filter = None
-Global_Start_Time = ""
-Global_Recent_Key_Cap = ""
-Global_Handshake_Captures = 0
-
-# CLASSES
-class bcolors:
-    HEADER    = "\033[95m"
-    OKBLUE    = "\033[94m"
-    OKGREEN   = "\033[92m"
-    WARNING   = "\033[93m"
-    FAIL      = "\033[91m"
-    ENDC      = "\033[0m"
-    BOLD      = "\033[1m"
-    UNDERLINE = "\033[4m"
-
-class Configuration:
-    def __init__(self):
-        self.check_root()
-        self.check_op()
-        return
-
-    def user_force_variables_static(self):
-        self.printer = True
-        return
-
-    def parse_interface(self, interface):
-        if interface in pyw.interfaces() and pyw.modeget(interface) == "monitor":
-            self.interface = interface
-        else:
-            print(bcolors.FAIL + " [-] Non Monitor card selected.")
-            exit(0)
-        return
-
-    def parse_report(self, report):
-        if report:
-            try:
-                system("touch "+report)
-                self.report = open(report, "w")
-            except:
-                print(bcolors.FAIL+" [-] Report Location Invalid.")
-        else:
-            self.report = None
-        return
-
-    def parse_freq(self, freq):
-        self.frequency = freq
-        return
-
-    def parse_channel(self, channel):
-        _5_channels_ = [
-            36, 40, 44,
-            48, 52, 56,
-            60, 64, 100,
-            104, 108, 112,
-            116, 132, 136,
-            140, 149, 153,
-            157, 161, 165
-        ]
-
-        if channel == None:
-            if (self.frequency) == "2":
-                self.hop = True
-            elif str(self.frequency) == "5":
-                self.hop = True
-            else:
-                print(bcolors.FAIL+" [-] Channel Setting incorrect.")
-                exit(0)
-
-            self.channel = None
-
-        elif channel != None:
-            if str(self.frequency) == "2" and int(channel) in xrange(1, 12):
-                    self.hop = False
-            elif str(self.frequency) == "5" and int(channel) in _5_channels_:
-                    self.hop = False
-            else:
-                print(bcolors.FAIL+" [-] Channel Setting incorrect."+bcolors.ENDC)
-                exit(0)
-
-            self.channel = channel
-
-        return
-
-    def parse_kill(self, kill):
-        if kill != False:
-            commandlist = [
-        "service avahi-daemon stop",
-        "service network-manager stop",
-        "pkill wpa_supplicant",
-        "pkill dhclient"
-        ]
-
-            for item in commandlist:
-                try:
-                    os.system("sudo "+item)
-                except:
-                    pass
-        return
-
-    def parse_unassociated(self, un):
-        self.unassociated = un
-        return
-
-    def parse_mac_filter(self, mac_filter):
-        self.mac_filter = mac_filter
-        return
-
-    def parse_args(self):
-        parser = argparse.ArgumentParser()
-
-        parser.add_argument(
-            "-i",
-            action="store",
-            dest="interface",
-            help="select an interface",
-            required=True)
-
-        parser.add_argument(
-            "-r",
-            action="store",
-            default=False,
-            dest="report",
-            help="select a report location")
-
-        parser.add_argument(
-            "-f",
-            action="store",
-            default="2",
-            dest="freq",
-            help="select a frequency (2/5)",
-            choices=["2", "5"])
-
-        parser.add_argument(
-            "-c",
-            action="store",
-            default=None,
-            dest="channel",
-            help="select a channel")
-
-        parser.add_argument(
-            "-k",
-            action="store_true",
-            dest="kill",
-            help="sudo kill interfering processes.")
-
-        parser.add_argument(
-            "-u",
-            action="store_true",
-            dest="unassociated",
-            help="Whether to show unassociated clients.")
-
-        parser.add_argument(
-            "-a",
-            action="store",
-            default=None,
-            dest="access_mac",
-            help="Command for a specific mac addr.")
-
-        results = parser.parse_args()
-
-        self.parse_interface(results.interface)
-        self.parse_report(results.report)
-        self.parse_freq(results.freq)
-        self.parse_channel(results.channel)
-        self.parse_kill(results.kill)
-        self.parse_unassociated(results.unassociated)
-        self.parse_mac_filter(results.access_mac)
-
-        self.user_force_variables_static()
-        return
-
-    def check_root(self):
-        if getuid() != 0:
-            print(bcolors.FAIL+" [-] User is not Root.")
-            exit()
-        print(bcolors.OKGREEN+" [+] User:     " + getuser())
-        return
-
-    def check_op(self):
-        if uname()[0].startswith("Linux") and not "Darwin" not in uname()[0]:
-            print(bcolors.FAIL+" [-] Wrong OS.")
-            exit()
-
-        print(bcolors.OKGREEN+" [+] Host OS:  " + str(uname()[0]))
-        print(bcolors.OKGREEN+" [+] Hostname: " + str(uname()[1])+bcolors.ENDC+bcolors.BOLD)
-        return
 
 class Access_Point:
-    def __init__(self, ssid, enc, ch, mac, ven, sig):
-        self.mssid = str(ssid)[:20]
-        self.menc = enc
-        self.mch = str(ch)
-        self.mmac = mac
-        self.mven = ven[:8]
-        self.msig = sig
-        self.mbeacons = 1
-        self.meapols = 0
-        return
+    def __init__(self, ssid, enc, ch, mac, ven, sig, packet):
+        self.mssid = ssid;
+        self.menc  = enc;
+        self.mch   = ch;
+        self.mmac  = mac;
+        self.mven  = ven[:8];
+        self.msig  = sig;
 
-    def update_ssid(self, ssid):
-        self.mssid = ssid
-        return
+        self.mbeacons = 1;
+
+        self.frame2 = None;
+        self.frame3 = None;
+        self.frame4 = None;
+        self.replay_counter = None;
+        self.packets = [packet];
+        self.found   = False;
+        return;
+
 
 class Client:
-    def __init__(self, mac, bssid, rssi):
-        self.mmac   = mac
-        self.mbssid = bssid
-        self.msig   = rssi
-        self.mnoise = 0
-        return
+    def __init__(self, mac, bssid, rssi, essid):
+        self.mmac   = mac;
+        self.mbssid = bssid;
+        self.msig   = rssi;
+        self.mnoise = 1;
+        self.essid  = essid;
+        return;
 
-# HANDLER
-def handler_beacon(packet):
-    global Global_Access_Points
-    global Global_Clients
-    global Global_Mac_Filter
-    global Global_Mac_Filter_Channel
 
-    source = packet.addr2
+class Sniffer_Configuration:
+    def __init__(self, interface, channel, hop, freq, kill, mfilter, unassociated):
+        self.mface    = interface;
+        self.mchannel = channel;
+        self.mfreq    = freq;
+        self.mkill    = kill;
+        self.mfilter  = mfilter;
+        self.hop      = hop;
+        self.mfilter_channel = None;
+        self.unassociated = unassociated;
+        self.cap_message  = "";
 
-    if source in Global_Access_Points:
-        Global_Access_Points[source].msig = (get_rssi(packet.notdecoded))
-        Global_Access_Points[source].mbeacons += 1
+        self.ignore = [
+            "ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00",
+            "01:80:c2:00:00:00", "01:00:5e", "01:80:c2",
+            "33:33"];
 
-    else:
-        mac = packet.addr3
-        destination = packet.addr1
+        self.hidden = [];
+        self.valid_channels = [];
 
-        Global_Handshakes[mac] = []
-        Global_Handshakes[mac].append(packet)
+        self.aps = {};
+        self.cls = {};
+        self.un_cls = {};
 
-        if not packet.info or u"\x00" in "".join([x if ord(x) < 128 else "" for x in packet.info]):
-            Global_Hidden_SSIDs.append(mac)
-            name = "<len: "+str(len(packet.info))+">"
+        return;
+
+
+    def run(self):
+        sniff(iface=self.mface, prn=self.sniff_packets, store=0);
+        return;
+
+
+    def check_valid(self, mac=None):
+        if not mac:
+            return False;
+
         else:
-            name = "".join([x if ord(x) < 128 else "" for x in packet.info])
+            for item in self.ignore:
+                if mac.startswith(item):
+                    return False;
+        return True;
 
-        if len(name) == 0:
-            name = "<Unicode Shit>"
 
-        p = packet[Dot11Elt]
-        cap = packet.sprintf("{Dot11Beacon:%Dot11Beacon.cap%}"
-        "{Dot11ProbeResp:%Dot11ProbeResp.cap%}").split("+")
+    def hopper(self):
+        interface = pyw.getcard(self.mface);
+        timeout = 1.0;
 
-        sec = set()
+        if self.mfreq == 2:
+            __FREQS__ = [
+                1, 2, 3, 4, 5, 6,
+                7, 8, 9, 10, 11
+                ];
 
-        while isinstance(p, Dot11Elt):
-            if p.ID == 3:
-                try:
-                    channel = ord(p.info)
-                except:
-                    pass
-            elif p.ID == 48:
-                sec.add("WPA2")
-            elif p.ID == 61:
-                if not channel:
-                    channel = ord(p.info[-int(p.len):-int(p.len)+1])
-            elif p.ID == 221 and p.info.startswith("\x00P\xf2\x01\x01\x00"):
-                if "WPA2" not in sec:
-                    sec.add("WPA")
+        elif self.mfreq == 5:
+            __FREQS__ = [
+                36, 40, 44, 48, 52, 56,
+                60, 64, 100, 104, 108, 112,
+                116, 132, 136, 140, 149, 153,
+                157, 161, 165
+            ];
 
-            p = p.payload
+        while True:
 
-        if not sec:
-            if "privacy" in cap:
-                sec.add("WEP")
+            if not self.mfilter_channel:
+                channel = choice(__FREQS__);
+                pyw.chset(interface, channel, None);
+                self.mchannel = channel;
+
             else:
-                sec.add("OPEN")
+                channel = self.mfilter_channel;
+                pyw.chset(interface, channel, None);
+                self.mchannel = self.mfilter_channel;
+                break;
 
-        if "0050f204104a000110104400010210" in str(packet).encode("hex"):
-            sec.add("WPS")
+            while timeout < 3:
+                timeout += .05;
+            sleep(timeout);
+        return;
 
-        try:
-            oui = ((EUI(mac)).oui).registration().org
-        except:
-            oui = "<Unknown>"
 
-        Global_Access_Points[source] = Access_Point(
-            name,
-            ":".join(sec),
-            channel,
-            mac,
-            unicode(oui),
-            get_rssi(packet[0].notdecoded))
+    def get_access_points(self, AP):
+        return [
+            self.aps[AP].mmac,
+            self.aps[AP].menc,
+            self.aps[AP].mch,
+            self.aps[AP].mven,
+            self.aps[AP].msig,
+            self.aps[AP].mbeacons,
+            self.aps[AP].mssid[:22]
+        ];
 
-        if mac == Global_Mac_Filter:
-            Global_Mac_Filter_Channel = channel
 
-    return
+    def get_clients(self, cl):
+        return [
+            self.cls[cl].mmac,
+            self.cls[cl].mbssid,
+            self.cls[cl].mnoise,
+            self.cls[cl].msig,
+            self.cls[cl].essid
+        ];
 
-def handler_data(packet):
-    global Global_Access_Points
-    global Global_Clients
 
-    address1 = packet.addr1
-    address2 = packet.addr2
+    def get_un_clients(self, cl):
+        return [
+            self.un_cls[cl].mmac,
+            "",
+            self.un_cls[cl].mnoise,
+            self.un_cls[cl].msig,
+            ""
+        ];
 
-    if Global_Access_Points.has_key(address1):
-        if Global_Clients.has_key(address2):
 
-            if Global_Clients[address2].mbssid != address1:
-                Global_Clients[address2].mssid = (address1)
+    def printer(self):
+        start_time = time();
+        timeout = 1.1;
+        buffer_message = "";
 
-            Global_Clients[address2].mnoise += 1
-            Global_Clients[address2].msig = (get_rssi(packet.notdecoded))
+        while True:
+            wifis = list(map(self.get_access_points, self.aps));
+            wifis.sort(key=lambda x: (x[6]));
 
-        elif check_valid(address2):
-            Global_Clients[address2] = Client(address2, address1, get_rssi(packet.notdecoded))
-            Global_Clients[address2].mnoise += 1
+            clients = list(map(self.get_clients, self.cls));
 
-    elif Global_Access_Points.has_key(address2):
-        if Global_Clients.has_key(address1):
+            if self.unassociated == True:		# print all clients no matter what
+                clients += list(map(self.get_un_clients, self.un_cls));
 
-            if Global_Clients[address1].mbssid != address2:
-                Global_Clients[address1].mssid = (address2)
+            clients.sort(key=lambda x: (x[4]));
 
-            Global_Clients[address1].mnoise += 1
-            Global_Clients[address1].msig = (get_rssi(packet.notdecoded))
+            time_elapsed = int(time() - start_time);
 
-        elif check_valid(address1):
-            Global_Clients[address1] = Client(address1, address2, get_rssi(packet.notdecoded))
-            Global_Clients[address1].mnoise += 1
+            hours = time_elapsed / 3600;
+            mins = (time_elapsed % 3600) / 60;
+            secs = time_elapsed % 60;
 
-    return
+            if hours > 0:
+                printable_time = "%d h %d m %d s" % (hours, mins, secs);
 
-def handler_eap(packet):
-    global Global_Access_Points
-    global Global_Handshakes
-    global Global_Recent_Key_Cap
-    global Global_Handshake_Captures
+            elif mins > 0:
+                printable_time = "%d m %d s" % (mins, secs);
 
-    if packet.addr3 in Global_Handshakes:
-        Global_Handshakes[packet.addr3].append(packet)
-        Global_Access_Points[packet.addr3].meapols += 1
+            else:
+                printable_time = "%d s" % secs;
 
-        folder_path = ("/root/pcaps/")
-        filename = (str(Global_Access_Points[packet.addr3].mssid)+"_"+str(packet.addr3)[-5:].replace(":", "")+".pcap")
+            stderr.write("\x1b[2J\x1b[H");
 
-    if len(Global_Handshakes[packet.addr3]) >= 6:
-        if not os.path.isfile(folder_path+filename):
-            os.system("touch "+folder_path+filename)
+            sys.stdout.write("{0}[+] {1}Time: {2}[{3}{4}{5}] {6}Slithering: {7}[{8}{9}{10}] {11}{12} {13}\n".format(c.G, c.E, c.B, c.W, printable_time, c.B, c.E, c.B, c.W, self.mchannel, c.B, c.E, self.cap_message, buffer_message));
 
-        wrpcap(folder_path+filename, Global_Handshakes[packet.addr3], append=True)
-        Global_Handshakes[packet.addr3] = []
-        Global_Recent_Key_Cap = (" - [boopstrike: " + str(packet.addr3).upper() + "]")
-        Global_Handshake_Captures += 1
-    return
+            sys.stdout.write( "\r\n{0}{1}{2}{3}{4}{5}{6}\n".format(c.F+"Mac Addr".ljust(19, " "), "Enc".ljust(10, " "), "Ch".ljust(4, " "), "Vendor".ljust(9, " "), "Sig".ljust(5, " "), "Beacons".ljust(8, " "), "SSID"+c.E) );
+            for item in wifis:
+                sys.stdout.write( " {0}{1}{2:<4}{3}{4:<5}{5:<8}{6}\n".format(item[0].ljust(19, " "), item[1].ljust(10, " "), item[2], item[3].ljust(9, " "), item[4], item[5], item[6].encode('utf-8') ));
 
-def handler_probereq(packet):
-    global Global_Clients
+            sys.stdout.write("\n{0}{1}{2}{3}{4}\n".format(c.F+"Mac".ljust(19, " "), "AP Mac".ljust(19, " "), "Noise".ljust(7, " "), "Sig".ljust(5, " "), "AP SSID"+c.E) );
 
-    if Global_Clients.has_key(packet.addr2):
-        Global_Clients[packet.addr2].msig = (get_rssi(packet.notdecoded))
+            for item in clients:
+                sys.stdout.write( " {0}{1}{2:<7}{3:<5}{4}\n".format(item[0].ljust(19, " "), item[1].ljust(19, " "), item[2], item[3], item[4].encode('utf-8')) );
 
-    elif check_valid(packet.addr2):
-        Global_Clients[packet.addr2] = Client(packet.addr2, "", get_rssi(packet.notdecoded))
+            if timeout < 4.5:
+                timeout += .05;
 
-    Global_Clients[packet.addr2].mnoise += 1
+            sleep(timeout);
+        return;
 
-    return
 
-def handler_proberes(packet):
-    global Global_Access_Points
-    global Global_Hidden_SSIDs
+    def get_rssi(self, decoded):
+        rssi = int(-(256 - ord(decoded[-2:-1])));
 
-    if (packet.addr3 in Global_Hidden_SSIDs):
-        Global_Access_Points[packet.addr3].update_ssid(packet.info)
-        Global_Hidden_SSIDs.remove(packet.addr3)
-    return
+        if rssi not in xrange(-100, 0):
+            rssi = (-(256 - ord(decoded[-4:-3])));
 
-def get_rssi(decoded):
-    rssi = -(256 - ord(decoded[-2:-1]))
+        if rssi < -100:
+            return -1;
+        return rssi;
 
-    if int(rssi) not in xrange(-100, 0):
-        return(-(256 - ord(decoded[-4:-3])))
 
-    return rssi
+    def handler_proberequest(self, packet):
+        if packet.addr2 in self.un_cls:
+            self.un_cls[packet.addr2].msig = (self.get_rssi(packet.notdecoded));
+            self.un_cls[packet.addr2].mnoise += 1;
 
-def channel_hopper(configuration):
-    global Global_Channel_Hopper_Flag
-    global Global_Mac_Filter_Channel
+        elif self.check_valid(packet.addr2):
+            self.un_cls[packet.addr2] = Client(packet.addr2, "", self.get_rssi(packet.notdecoded), "");
 
-    interface = configuration.interface
-    frequency = configuration.frequency
+        return;
 
-    if frequency == "2":
-        __FREQS__ = {
-            "2.412": 1,
-            "2.417": 2,
-            "2.422": 3,
-            "2.427": 4,
-            "2.432": 5,
-            "2.437": 6,
-            "2.442": 7,
-            "2.447": 8,
-            "2.452": 9,
-            "2.457": 10,
-            "2.462": 11
-    }
 
-    elif frequency == "5":
-        __FREQS__ = {
-            "5.180": 36,
-            "5.200": 40,
-            "5.220": 44,
-            "5.240": 48,
-            "5.260": 52,
-            "5.280": 56,
-            "5.300": 60,
-            "5.320": 64,
-            "5.500": 100,
-            "5.520": 104,
-            "5.540": 108,
-            "5.560": 112,
-            "5.580": 116,
-            "5.660": 132,
-            "5.680": 136,
-            "5.700": 140,
-            "5.745": 149,
-            "5.765": 153,
-            "5.785": 157,
-            "5.805": 161,
-            "5.825": 165
-        }
+    def handler_proberesponse(self, packet):
+        self.aps[packet.addr3].mssid = packet.info;
+        self.hidden.remove(packet.addr3);
+        self.aps[packet.addr3].packets.append(packet);
 
-    while Global_Channel_Hopper_Flag == True:
-        if Global_Mac_Filter_Channel != "":
-            channel = __FREQS__.keys()[__FREQS__.values().index(Global_Mac_Filter_Channel)]
-            system("sudo iwconfig "+interface+" freq "+channel+"G")
-            configuration.channel = Global_Mac_Filter_Channel
-            break
+        return;
 
-        channel = str(choice(__FREQS__.keys()))
-        system("sudo iwconfig "+interface+" freq "+channel+"G")
 
-        configuration.channel = __FREQS__[channel]
-        sleep(2.2)
-    return
+    def handler_beacon(self, packet):
+        if packet.addr2 in self.aps:
+            self.aps[packet.addr2].msig = (self.get_rssi(packet.notdecoded));
+            self.aps[packet.addr2].mbeacons += 1;
 
-def get_access_points(AP):
-    global Global_Access_Points
-
-    return [
-        Global_Access_Points[AP].mmac,
-        Global_Access_Points[AP].menc,
-        Global_Access_Points[AP].mch,
-        Global_Access_Points[AP].mven,
-        Global_Access_Points[AP].msig,
-        Global_Access_Points[AP].mbeacons,
-        Global_Access_Points[AP].mssid
-    ]
-
-def get_clients(cl):
-    global Global_Access_Points
-
-    return [
-        Global_Clients[cl].mmac,
-        Global_Access_Points[Global_Clients[cl].mbssid].mmac,
-        str(Global_Clients[cl].mnoise),
-        str(Global_Clients[cl].msig),
-        Global_Access_Points[Global_Clients[cl].mbssid].mssid
-    ]
-
-def get_un_clients():
-    global Global_Access_Points
-    global Global_Clients
-
-    clients = []
-    for cl in Global_Clients:
-        if len(Global_Access_Points[Global_Clients[cl].mbssid].mssid) > 0:
-            clients.append([
-                Global_Clients[cl].mmac,
-                Global_Access_Points[Global_Clients[cl].mbssid].mmac,
-                str(Global_Clients[cl].mnoise),
-                str(Global_Clients[cl].msig),
-                Global_Access_Points[Global_Clients[cl].mbssid].mssid
-            ])
-    return clients
-
-def printer_thread(configuration):
-    global Global_Clients
-    global Global_Access_Points
-    global Global_Start_Time
-    global Global_Recent_Key_Cap
-    global Global_Print_Flag
-    global Global_Handshake_Captures
-
-    typetable = "simple"
-    timeout = 1.5
-
-    while Global_Print_Flag == True:
-        wifis = list(map(get_access_points, Global_Access_Points))
-        wifis.sort(key=lambda x: (x[5]))
-        wifis.remove(wifis[0])
-
-        if configuration.unassociated == True:		# print all clients no matter what
-            clients = list(map(get_clients, Global_Clients))
         else:
-            clients = get_un_clients()	     		# only print associated clients
+            if packet.info and u"\x00" not in "".join([x if ord(x) < 128 else "" for x in packet.info]):
+                name = packet.info.decode("utf-8");
+            else:
+                self.hidden.append(packet.addr3);
+                name = (("< len: {0} >").format(len(packet.info)));
 
-        clients.sort(key=lambda x: (x[4]))
+            p = packet[Dot11Elt];
+            cap = packet.sprintf("{Dot11Beacon:%Dot11Beacon.cap%}"
+            "{Dot11ProbeResp:%Dot11ProbeResp.cap%}").split("+");
 
-        time_elapsed = int(time() - Global_Start_Time)
+            sec = set();
+            channel = "";
 
-        if time_elapsed < 60:
-            printable_time = seconds = str(int(time_elapsed % 60))+" s"
+            while isinstance(p, Dot11Elt):
+                if p.ID == 3:
+                    try:
+                        channel = ord(p.info);
+                    except:
+                        pass;
+                elif p.ID == 48:
+                    if "WPA" in sec:
+                        sec.remove("WPA");
+                    sec.add("WPA2");
+                elif p.ID == 61:
+                    if channel == "":
+                        channel = ord(p.info[-int(p.len):-int(p.len)+1]);
+                elif p.ID == 221 and p.info.startswith("\x00P\xf2\x01\x01\x00"):
+                    if "WPA2" not in sec:
+                        sec.add("WPA");
+
+                p = p.payload;
+
+            if self.hop == False and channel != self.mchannel:
+                return;
+
+            if not sec:
+                if "privacy" in cap:
+                    sec.add("WEP");
+                else:
+                    sec.add("OPEN");
+
+            if "0050f204104a000110104400010210" in str(packet).encode("hex"):
+                sec.add("WPS"); #204104a000110104400010210 < May not be necessary...
+
+            try:
+                oui = ((EUI(packet.addr3)).oui).registration().org;
+            except:
+                oui = "< NA >";
+
+            self.aps[packet.addr2] = Access_Point(
+                name,
+                ":".join(sec),
+                channel,
+                packet.addr3,
+                unicode(oui),
+                self.get_rssi(packet.notdecoded),
+                packet
+                );
+
+            if packet.addr3 == self.mfilter:
+                self.mfilter_channel = channel;
+
+            return;
+
+
+    def handler_ctrl(self, packet):
+        if packet.addr1 in self.aps:
+            self.aps[packet.addr1].msig = (self.get_rssi(packet.notdecoded));
+        return;
+
+
+    def handler_data(self, packet):
+        if packet.addr1 in self.aps:
+            if packet.addr2 in self.cls:
+
+                if self.cls[packet.addr2].mbssid != packet.addr1:
+                    self.cls[packet.addr2].mssid = (packet.addr1);
+
+                self.cls[packet.addr2].mnoise += 1;
+                self.cls[packet.addr2].msig = (self.get_rssi(packet.notdecoded));
+
+            elif packet.addr2 in self.un_cls:
+                self.cls[packet.addr2] = Client(packet.addr2, packet.addr1, self.get_rssi(packet.notdecoded), self.aps[packet.addr1].mssid);
+                del self.un_cls[packet.addr2]
+
+            elif self.check_valid(packet.addr2):
+                self.cls[packet.addr2] = Client(packet.addr2, packet.addr1, self.get_rssi(packet.notdecoded), self.aps[packet.addr1].mssid);
+                self.cls[packet.addr2].mnoise += 1;
+
+        elif packet.addr2 in self.aps:
+            if packet.addr1 in self.cls:
+
+                if self.cls[packet.addr1].mbssid != packet.addr2:
+                    self.cls[packet.addr1].mssid = (packet.addr2);
+
+                self.cls[packet.addr1].mnoise += 1;
+                self.cls[packet.addr1].msig = (self.get_rssi(packet.notdecoded));
+
+            elif packet.addr1 in self.un_cls:
+                self.cls[packet.addr1] = Client(packet.addr1, packet.addr2, self.get_rssi(packet.notdecoded), self.aps[packet.addr2].mssid);
+                del self.un_cls[packet.addr1];
+
+            elif self.check_valid(packet.addr1):
+                self.cls[packet.addr1] = Client(packet.addr1, packet.addr2, self.get_rssi(packet.notdecoded), self.aps[packet.addr2].mssid);
+                self.cls[packet.addr1].mnoise += 1;
+
+        if packet.haslayer(WPA_key):
+            if packet.addr3 not in self.aps:
+                return;
+
+            if self.aps[packet.addr3].found == True:
+                return;
+
+            else:
+                layer = packet.getlayer(WPA_key);
+
+                if (packet.FCfield & 1):
+                        # From DS = 0, To DS = 1
+                    STA = packet.addr2;
+                elif (packet.FCfield & 2):
+                        # From DS = 1, To DS = 0
+                    STA = packet.addr1;
+                else:
+                    return;
+
+                key_info = layer.key_info;
+                wpa_key_length = layer.wpa_key_length;
+                replay_counter = layer.replay_counter;
+                WPA_KEY_INFO_INSTALL = 64;
+                WPA_KEY_INFO_ACK = 128;
+                WPA_KEY_INFO_MIC = 256;
+                    # check for frame 2
+                if ((key_info & WPA_KEY_INFO_MIC) and (key_info & WPA_KEY_INFO_ACK == 0) and (key_info & WPA_KEY_INFO_INSTALL == 0) and (wpa_key_length > 0)):
+                    self.aps[packet.addr3].frame2 = 1;
+                    self.aps[packet.addr3].packets.append(packet[0]);
+                    # check for frame 3
+                elif ((key_info & WPA_KEY_INFO_MIC) and (key_info & WPA_KEY_INFO_ACK) and (key_info & WPA_KEY_INFO_INSTALL)):
+                    self.aps[packet.addr3].frame3 = 1;
+                    self.aps[packet.addr3].replay_counter = replay_counter;
+                    self.aps[packet.addr3].packets.append(packet[0]);
+                    # check for frame 4
+                elif ((key_info & WPA_KEY_INFO_MIC) and (key_info & WPA_KEY_INFO_ACK == 0) and (key_info & WPA_KEY_INFO_INSTALL == 0) and self.aps[packet.addr3].replay_counter == replay_counter):
+                    self.aps[packet.addr3].frame4 = 1;
+                    self.aps[packet.addr3].packets.append(packet[0]);
+
+                if (self.aps[packet.addr3].frame2 and self.aps[packet.addr3].frame3 and self.aps[packet.addr3].frame4):
+                    folder_path = ("pcaps/");
+                    filename = ("{0}_{1}.pcap").format(self.aps[packet.addr3].mssid.encode('utf-8'), packet.addr3[-5:].replace(":", ""));
+
+                    wrpcap(folder_path+filename, self.aps[packet.addr3].packets);
+
+                    self.aps[packet.addr3].found = True;
+                    self.cap_message = (" - [Booped: %s%s%s]" % (c.F, packet.addr3, c.E));
+
+
+    def sniff_packets(self, packet):
+        if (self.mfilter == None or (packet.addr1 == self.mfilter or packet.addr2 == self.mfilter)):
+
+            if packet.type == 0:
+                if packet.subtype == 4:
+                    self.handler_proberequest(packet);
+
+                elif packet.subtype == 5 and packet.addr3 in self.hidden:
+                    self.handler_proberesponse(packet);
+
+                elif packet.subtype == 8 and self.check_valid(packet.addr3):
+                    self.handler_beacon(packet);
+
+            elif packet.type == 1:
+                self.handler_ctrl(packet);
+
+            elif packet.type == 2:
+                self.handler_data(packet);
+        return;
+
+
+def startup_checks():
+    if getuid() != 0:
+        sys.stderr(c.F+" [-] User is not Root.");
+        exit();
+
+    if uname()[0].startswith("Linux") and not "Darwin" not in uname():
+        sys.stderr(c.F+" [-] Wrong OS.");
+        exit();
+    return;
+
+
+def parse_args():
+    parser = argparse.ArgumentParser();
+
+    parser.add_argument(
+        '--version',
+        action='version',
+        version="{0}{1}".format(c.G, "Version: 1.0.0"));
+
+    parser.add_argument(
+        "-i",
+        "--interface",
+        action="store",
+        dest="interface",
+        help="select an interface",
+        required=True);
+
+    parser.add_argument(
+        "-f",
+        "--frequency",
+        action="store",
+        default=2,
+        dest="freq",
+        type=int,
+        help="select a frequency (2/5)",
+        choices=[2, 5]);
+
+    parser.add_argument(
+        "-c",
+        "--channel",
+        action="store",
+        default=None,
+        dest="channel",
+        type=int,
+        help="select a channel");
+
+    parser.add_argument(
+        "-k",
+        "--kill",
+        action="store_true",
+        dest="kill",
+        help="sudo kill interfering processes.");
+
+    parser.add_argument(
+        "-u",
+        "--unassociated",
+        action="store_true",
+        dest="unassociated",
+        help="Whether to show unassociated clients.");
+
+    parser.add_argument(
+        "-a",
+        "--accesspoint",
+        action="store",
+        default=None,
+        dest="access_mac",
+        help="Command for a specific mac addr.");
+
+    results = parser.parse_args();
+
+    interface = results.interface;
+    channel   = results.channel;
+    frequency = results.freq;
+    kill      = results.kill;
+    mfilter   = results.access_mac;
+    unassociated = results.unassociated;
+
+    if interface not in pyw.interfaces() or  pyw.modeget(interface) != "monitor":
+        print(c.F + " [-] Non Monitor card selected.");
+        exit(0);
+
+
+    if channel == None:
+
+        if frequency == 2:
+            hop = True;
+
+        elif frequency == 5:
+            hop = True;
+
         else:
-            printable_time = str(int(time_elapsed / 60))+" m"
+            print(c.F+" [-] Channel Setting incorrect.");
+            exit(0);
 
-        system("clear")
 
-        print(bcolors.ENDC+"[+] Time: [" + printable_time + "] Slithering: ["+str(configuration.channel)+"]" + Global_Recent_Key_Cap + " - ["+str(Global_Handshake_Captures)+"]")
-        print("")
-        print(tabulate(wifis, headers=["Mac Addr", "Enc", "Ch", "Vendor", "Sig", "Bea", "SSID"], tablefmt=typetable))
-        print(bcolors.ENDC)
-        print(tabulate(clients, headers=["Mac", "AP Mac", "Noise", "Sig", "AP SSID"], tablefmt=typetable))
+    elif channel != None:
 
-        if timeout < 2:
-            timeout += .05
+        if frequency == 2 and channel in xrange(1, 12):
+            hop = False;
 
-        sleep(timeout)
-    return
+        elif frequency == "5" and channel in [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 132, 136, 140, 149, 153, 157, 161, 165]:
+            hop = False;
 
-def sniff_packets(packet):
-    global Global_Mac_Filter
-    global Global_Ignore_Broadcast
+        else:
+            print(c.F+" [-] Channel Setting incorrect."+c.E);
+            exit(0);
 
-    if (Global_Mac_Filter == None or (packet.addr1 == Global_Mac_Filter or packet.addr2 == Global_Mac_Filter)):
+    if kill != False:
+        commandlist = [
+            "service avahi-daemon stop",
+            "service network-manager stop",
+            "pkill wpa_supplicant", "pkill dhclient"
+            ];
 
-        if packet.type == 0:
-            if packet.subtype == 4:
-                handler_probereq(packet)
+        for item in commandlist:
+            try:
+                system("sudo %s" % (item));
+            except:
+                pass
 
-            elif packet.subtype == 5:
-                handler_proberes(packet)
+    return [interface, channel, hop, frequency, kill, mfilter, unassociated];
 
-            elif packet.subtype == 8:
-                handler_beacon(packet)
 
-        elif packet.type == 2:
-            if packet.addr1 not in Global_Ignore_Broadcast and packet.addr2 not in Global_Ignore_Broadcast:
-                handler_data(packet)
-
-            if packet.haslayer(EAPOL):
-                handler_eap(packet)
-
-    return
-
-# MISC
-def set_size(height, width):
-    stdout.write("\x1b[8;{rows};{cols}t".format(rows=height, cols=width))
-    return
-
-def display_art():
-    print(bcolors.OKBLUE+"""
-    ____                   _____       _ ________
-   / __ )____  ____  ____ / ___/____  (_) __/ __/
-  / __  / __ \/ __ \/ __ \\\__ \/ __ \/ / /_/ /_
- / /_/ / /_/ / /_/ / /_/ /__/ / / / / / __/ __/
-/_____/\____/\____/ .___/____/_/ /_/_/_/ /_/
-                 /_/
-    """)
-    print(bcolors.HEADER+"     Codename: Horned Viper\r\n"+bcolors.BOLD)
-    return
-
-def check_valid(mac):
-    global Global_Ignore_Broadcast
-    global Global_Ignore_Multicast
-
-    if mac in Global_Ignore_Broadcast:
-        return False
-
-    for item in Global_Ignore_Multicast:
-        if mac.startswith(item):
-            return False
-    return True
-
-def create_pcap_filepath():
-    if not os.path.isdir("/root/pcaps"):
-        os.system("mkdir /root/pcaps")
-    return
-
-def start_sniffer(configuration):
-    sniff(iface=configuration.interface, prn=sniff_packets, store=0)
-    return
-
-# MAIN CONTROLLER
-def int_main(configuration):
-    global Global_Mac_Filter
-    global PRINTER_FLAG
-    global Global_Channel_Hopper_Flag
-    global Global_Access_Points
-    global Global_Clients
-    global Global_Start_Time
-
-    Global_Mac_Filter = configuration.mac_filter
+def main():
+    os.system("mkdir pcaps/");
+    os.system("chmod 1777 pcaps/");
 
     def signal_handler(*args):
-        PRINTER_FLAG = False
-        Global_Channel_Hopper_Flag  = False
+        print(c.G+"\r [+] "+c.E+"Commit to Exit.");
+        exit(0);
+        return;
 
-        if configuration.report != None:
-            wifis = list(map(get_Global_Access_Points, Global_Access_Points))
-            wifis.remove(wifis[0])
+    signal.signal(signal.SIGINT, signal_handler);
 
-            clients = list(map(get_clients, Global_Clients))
-            clients.sort(key=lambda x: x[4])
+    startup_checks();
+    args = parse_args();
 
-            configuration.report.write(tabulate(wifis, headers=["M", "E", "Ch", "V", "S", "B", "SS"], tablefmt="psql")+"\r\n")
-            configuration.report.write(tabulate(clients, headers=["M", "AP M", "N", "S", "AP"], tablefmt="psql")+"\r\n")
-            configuration.report.close()
+    Sniffer = Sniffer_Configuration(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
 
-        print(bcolors.OKGREEN+"\r [+] Commit to Exit."+bcolors.ENDC)
-        exit(0)
-        return 0
+    if args[2] == True:
+        hop_thread = Thread(target=Sniffer.hopper);
+        hop_thread.daemon = True;
+        hop_thread.start()
 
-    signal.signal(signal.SIGINT, signal_handler)
-    Global_Access_Points[""] = Access_Point("","","","","","")
+    printer_thread = Thread(target=Sniffer.printer);
+    printer_thread.daemon = True;
+    printer_thread.start()
 
-    if configuration.hop == True:
-        Hopper_Thread = Thread(target=channel_hopper, args=[configuration])
-        Hopper_Thread.daemon = True
-        Hopper_Thread.start()
-    else:
-        os.system("iwconfig " + configuration.interface + " channel " + configuration.channel)
+    Sniffer.run();
+    return;
 
-    Global_Start_Time = time()
-
-    Sniffer_Thread = Thread(target=start_sniffer, args=[configuration])
-    Sniffer_Thread.daemon = True
-    Sniffer_Thread.start()
-
-    create_pcap_filepath()
-    set_size(30, 81)
-
-    # sleep(2)
-
-    if configuration.printer == True:
-        printer_thread(configuration)
-
-    return 0
 
 if __name__ == "__main__":
-    display_art()
-
-    configuration = Configuration()
-    configuration.parse_args()
-
-    int_main(configuration)
+    main();

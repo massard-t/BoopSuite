@@ -1,2 +1,4 @@
 *.pyc
 *.pcap
+test.py
+pcaps/

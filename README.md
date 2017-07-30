@@ -4,23 +4,23 @@ BoopSuite
 # Synopsis:
 
 BoopSuite is an up and coming suite of wireless tools designed to be easy to use
-and powerful in scope, written in python with semicolons, because I hate children.
+and powerful in scope, that support both the 2 and 5 GHz spectrums. Written
+purely in python. A handshake sniffer (CLI and GUI), a monitor mode enabling
+script and a deauth script are all parts of this suite with more to come.
 
 ![This Used To Be An Image But Now It Is Not. :(](Images/Run.png "BoopSuite")
 
-## Why use this over aircrack-ng?
+## Another Wireless pentesting suite.
 
-This project is easier to use, identifies clients more quickly than airodump-ng,
-and displays less useless information. Additionally I can take requests and build
-them out as I continue to develop this project.
++ A wireless sniffer
++ Two gui's for the wireless sniffer (old/new)
++ A wireless deauther
++ A monitor mode enabler and disabler
 
-Don't mistake me, aircrack is an amazing suite of tools and I understand the thought of
-\"why use a different tool when airodump is still very usable\", and the answer
-is because change is good, and this project is going to continue to grow as I
-add new handlers for additional packet types.
+### Note:
 
-The project now has a GUI!
-The project now has a monitor mode enabling script.
+I hope my project can aid everyone in their pentesting needs, and this project
+is going to continue to grow as I add new handlers for additional packet types.
 
 Changelog located in CHANGELOG file.
 
@@ -33,9 +33,8 @@ would love to hear about it.
 ## What else is coming?
 
 I am going to add scripts to do the following:
-+ BoopStrike - Deauthentication attacks
 + BoopCoil   - Deauth attack detector
-+ Boop       - An airmon-ng clone
++ BoopDate   - A script to update boopsuite
 
 More ideas are welcome.
 Email me @: jacobsin1996@gmail.com
@@ -56,10 +55,6 @@ Email me @: jacobsin1996@gmail.com
 
 `boopsniff -i wlan1mon -f 5`
 
-#### Reporting can also be enabled:
-
-`boopsniff -i wlan1mon -r ~/report.txt`
-
 #### If some processes are interfering then you can preemptively kill them with:
 
 `boopsniff -i wlan1mon -k`
@@ -71,6 +66,22 @@ Email me @: jacobsin1996@gmail.com
 #### If you want to filter by a specific AP mac address:
 
 `boopsniff -i wlan1mon -a xx:xx:xx:xx:xx:xx`
+
+#### To launch a deauth attack:
+
+`boopstrike -i wlan1mon`
+
+#### Deauth the 5ghz spectrum:
+
+`boopstrike -i wlan1mon -f 5`
+
+#### Deauth a single AP:
+
+`boopstrike -i wlan1mon -a xx:xx:xx:xx:xx:xx`
+
+#### Deauth everyone except one Access Point:
+
+`boopstrike -i wlan1mon -s xx:xx:xx:xx:xx:xx`
 
 #### New Update includes a gui tool:
 
@@ -106,15 +117,19 @@ Note: Will do error checking if you specify a channel the card doesnt support an
 
 NOTE: boop will always switch the mode from managed to monitor and vice versa.
 
-I'm not going to continue updating the GUI much as it's a pain and way less functional. Don't hate me.
+I'm working on updating the GUI so it will be much cleaner and way better looking,
+stay tuned.
 
 ![This Used To Be An Image But Now It Is Not. :(](Images/GUI.png "BoopSuite")
 
 Note: all pcap files will be saved in the directory ~/pcaps
 
-Note: since I haven't quite figured out how to determine which eapol
-message is which about 5% of the pcap files will be invalid.
-stay patient, I will figure it out.
+# Computer Usage
+
+The sniffer which is the heaviest CPU part uses really low CPU and memory,
+memory which is going to shrink in upcoming versions.
+
+![This Used To Be An Image But Now It Is Not. :(](Images/Top.png "BoopSuite")
 
 #### More options are coming in the future.
 
@@ -126,12 +141,12 @@ stay patient, I will figure it out.
 git clone https://github.com/M1ND-B3ND3R/BoopSuite.git
 cd BoopSuite
 pip install -r requirements.txt
-chmod +x setup.py
-./setup.py
+chmod +x install.py
+./install.py
 ```
 
-The setup includes creating two symbolic links for the gui and cli version of
-the tool so it can be run from anywhere.
+The setup includes creating symbolic links for the tool so it can be run from
+anywhere.
 
 # Upgrade:
 
@@ -145,13 +160,13 @@ My code is not malicious, however, you should always be wary.
 ```
 git clone https://github.com/M1ND-B3ND3R/BoopSuite.git
 cd BoopSuite
-chmod +x setup.py
-./setup.py
+chmod +x install.py
+./install.py
 ```
 
 # Reference:
 
-The top line is formatted as follows:
+The top line is formatted as follows for the sniffer:
 
 `[+] Time: TIME_ELAPSED Slithering: [CHANNEL] - [boopstrike: RECENT HANDHAKE CAPTURED] - [AMOUNT OF HANDSHAKES]`
 
@@ -179,11 +194,9 @@ to myself that I can do things that were previously impossible to me.
 
 + Wireless card discovery in VM for kali.
 
-+ Creating a window that pops up when you click on a client or access point in the
-gui that will display more stats.
-
 + Code Fixes will be happening.
 
 # License:
 
-GNU Public License V3
+MIT License
+(c) Jarad Dingman, 2017
